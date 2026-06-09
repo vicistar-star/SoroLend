@@ -1,6 +1,8 @@
 [workspace]
 members = [
     "lending-pool",
+    "collateral-manager",
+    "stoken",
 ]
 resolver = "2"
 

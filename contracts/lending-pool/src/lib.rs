@@ -24,6 +24,12 @@ pub enum ContractError {
     AssetMismatch = 8,
 }
 
+#[soroban_sdk::contractclient(name = "STokenClient")]
+pub trait STokenTrait {
+    fn mint(env: Env, to: Address, amount: i128);
+    fn burn(env: Env, from: Address, amount: i128);
+}
+
 #[contract]
 pub struct LendingPool;
 
@@ -46,6 +52,13 @@ impl LendingPool {
         write_pool_config(&env, &config);
         write_pool_state(&env, &state);
 
+        Ok(())
+    }
+
+    pub fn set_stoken(env: Env, admin: Address, stoken: Address) -> Result<(), ContractError> {
+        let config = read_pool_config(&env);
+        config.admin.require_auth();
+        write_stoken_contract(&env, &stoken);
         Ok(())
     }
 
@@ -82,6 +95,14 @@ impl LendingPool {
 
         write_user_supply(&env, &caller, &user_supply);
         write_pool_state(&env, &state);
+
+        // Mint sTokens
+        if has_stoken_contract(&env) {
+            let stoken_address = read_stoken_contract(&env);
+            let stoken_client = STokenClient::new(&env, &stoken_address);
+            stoken_client.mint(&caller, &shares);
+        }
+
         emit_supply(&env, &caller, &asset, amount, shares);
 
         Ok(shares)
@@ -120,6 +141,14 @@ impl LendingPool {
 
         write_user_supply(&env, &caller, &user_supply);
         write_pool_state(&env, &state);
+
+        // Burn sTokens
+        if has_stoken_contract(&env) {
+            let stoken_address = read_stoken_contract(&env);
+            let stoken_client = STokenClient::new(&env, &stoken_address);
+            stoken_client.burn(&caller, &shares);
+        }
+
         emit_withdraw(&env, &caller, &asset, amount, shares);
 
         Ok(amount)
@@ -552,5 +581,35 @@ mod tests {
         let user = Address::generate(&env);
         let result = invoke_supply(&env, &contract_id, &user, &wrong_asset, 100);
         assert_eq!(result, Err(ContractError::AssetMismatch));
+    }
+
+    #[contract]
+    pub struct MockSToken;
+    #[contractimpl]
+    impl MockSToken {
+        pub fn mint(_env: Env, _to: Address, _amount: i128) {}
+        pub fn burn(_env: Env, _from: Address, _amount: i128) {}
+    }
+
+    #[test]
+    fn test_stoken_integration() {
+        let (env, admin, asset, contract_id) = create_test_env();
+        let config = create_pool_config(&asset);
+        assert!(invoke_initialize(&env, &contract_id, &admin, config).is_ok());
+
+        let mock_stoken_id = env.register_contract(None, MockSToken);
+        
+        env.as_contract(&contract_id, || {
+            LendingPool::set_stoken(env.clone(), admin.clone(), mock_stoken_id.clone()).unwrap();
+        });
+
+        let user = Address::generate(&env);
+        let amount = 1_000_000_000i128;
+
+        // Supply should call mint
+        assert!(invoke_supply(&env, &contract_id, &user, &asset, amount).is_ok());
+
+        // Withdraw should call burn
+        assert!(invoke_withdraw(&env, &contract_id, &user, &asset, amount).is_ok());
     }
 }
