@@ -50,6 +50,7 @@ pub enum DataKey {
     UserSupply(Address),
     UserBorrow(Address),
     STokenContract,
+    CollateralManagerContract,
 }
 
 pub fn has_pool_config(env: &Env) -> bool {
@@ -117,4 +118,21 @@ pub fn read_stoken_contract(env: &Env) -> Address {
 
 pub fn has_stoken_contract(env: &Env) -> bool {
     env.storage().instance().has(&DataKey::STokenContract)
+}
+
+pub fn write_collateral_manager(env: &Env, contract: &Address) {
+    env.storage()
+        .instance()
+        .set(&DataKey::CollateralManagerContract, contract);
+}
+
+pub fn read_collateral_manager(env: &Env) -> Address {
+    env.storage()
+        .instance()
+        .get(&DataKey::CollateralManagerContract)
+        .expect("collateral manager not set")
+}
+
+pub fn has_collateral_manager(env: &Env) -> bool {
+    env.storage().instance().has(&DataKey::CollateralManagerContract)
 }

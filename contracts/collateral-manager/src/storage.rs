@@ -3,9 +3,11 @@ use soroban_sdk::{contracttype, Address, Env, Map};
 #[contracttype]
 #[derive(Clone, Debug, Eq, PartialEq)]
 pub enum DataKey {
-    Collateral(Address), // user address -> Map<asset_address, amount>
-    LiquidationThreshold(Address), // asset address -> threshold
-    Price(Address), // asset address -> price in USD (fixed point)
+    Collateral(Address),
+    LiquidationThreshold(Address),
+    Price(Address),
+    Admin,
+    OracleAddress,
 }
 
 pub fn write_collateral(env: &Env, user: Address, asset: Address, amount: i128) {
@@ -41,4 +43,28 @@ pub fn read_price(env: &Env, asset: Address) -> i128 {
         .instance()
         .get(&DataKey::Price(asset))
         .unwrap_or(0)
+}
+
+pub fn write_admin(env: &Env, admin: &Address) {
+    env.storage().instance().set(&DataKey::Admin, admin);
+}
+
+pub fn read_admin(env: &Env) -> Address {
+    env.storage().instance().get(&DataKey::Admin).expect("admin not set")
+}
+
+pub fn has_admin(env: &Env) -> bool {
+    env.storage().instance().has(&DataKey::Admin)
+}
+
+pub fn write_oracle(env: &Env, oracle: &Address) {
+    env.storage().instance().set(&DataKey::OracleAddress, oracle);
+}
+
+pub fn read_oracle(env: &Env) -> Address {
+    env.storage().instance().get(&DataKey::OracleAddress).expect("oracle not set")
+}
+
+pub fn has_oracle(env: &Env) -> bool {
+    env.storage().instance().has(&DataKey::OracleAddress)
 }

@@ -22,12 +22,20 @@ pub enum ContractError {
     UserBorrowNotFound = 6,
     PoolNotActive = 7,
     AssetMismatch = 8,
+    InsufficientCollateral = 9,
+    CollateralManagerNotSet = 10,
 }
 
 #[soroban_sdk::contractclient(name = "STokenClient")]
 pub trait STokenTrait {
     fn mint(env: Env, to: Address, amount: i128);
     fn burn(env: Env, from: Address, amount: i128);
+}
+
+#[soroban_sdk::contractclient(name = "CollateralManagerClient")]
+pub trait CollateralManagerTrait {
+    fn get_price(env: Env, asset: Address) -> i128;
+    fn get_health_factor(env: Env, user: Address, total_borrow_usd: i128) -> i128;
 }
 
 #[contract]
@@ -59,6 +67,13 @@ impl LendingPool {
         let config = read_pool_config(&env);
         config.admin.require_auth();
         write_stoken_contract(&env, &stoken);
+        Ok(())
+    }
+
+    pub fn set_collateral_manager(env: Env, admin: Address, manager: Address) -> Result<(), ContractError> {
+        let config = read_pool_config(&env);
+        config.admin.require_auth();
+        write_collateral_manager(&env, &manager);
         Ok(())
     }
 
@@ -132,6 +147,24 @@ impl LendingPool {
 
         if amount > state.total_supply {
             return Err(ContractError::InsufficientLiquidity);
+        }
+
+        // Health check: if user has borrow, verify they remain collateralized after withdrawal
+        if has_collateral_manager(&env) {
+            let user_borrow = read_user_borrow(&env, &caller);
+            if let Some(borrow) = user_borrow {
+                let total_debt = checked_add(borrow.principal, borrow.accrued_interest);
+                if total_debt > 0 {
+                    let coll_manager = read_collateral_manager(&env);
+                    let cm_client = CollateralManagerClient::new(&env, &coll_manager);
+                    let price = cm_client.get_price(&config.asset);
+                    let total_debt_usd = mul_div(total_debt, price, fixed_point_one());
+                    let health = cm_client.get_health_factor(&caller, &total_debt_usd);
+                    if health < fixed_point_one() {
+                        return Err(ContractError::InsufficientCollateral);
+                    }
+                }
+            }
         }
 
         user_supply.shares = checked_sub(user_supply.shares, shares);
@@ -225,6 +258,54 @@ impl LendingPool {
         write_user_borrow(&env, &caller, &user_borrow);
         write_pool_state(&env, &state);
         emit_repay(&env, &caller, &asset, repay_amount);
+
+        Ok(repay_amount)
+    }
+
+    pub fn liquidate_repay(
+        env: Env,
+        liquidator: Address,
+        borrower: Address,
+        asset: Address,
+        amount: i128,
+    ) -> Result<i128, ContractError> {
+        liquidator.require_auth();
+        let config = read_pool_config(&env);
+        Self::validate_pool_active(&config)?;
+        Self::validate_asset(&config, &asset)?;
+
+        Self::accrue_interest(&env);
+
+        let mut state = read_pool_state(&env);
+        let mut user_borrow = read_user_borrow(&env, &borrower).ok_or(ContractError::UserBorrowNotFound)?;
+
+        let total_debt = checked_add(user_borrow.principal, user_borrow.accrued_interest);
+        let repay_amount = if amount > total_debt { total_debt } else { amount };
+
+        let principal_payment = if repay_amount >= user_borrow.principal {
+            let remaining = checked_sub(repay_amount, user_borrow.principal);
+            user_borrow.accrued_interest = checked_sub(user_borrow.accrued_interest, remaining);
+            let old_principal = user_borrow.principal;
+            user_borrow.principal = 0;
+            old_principal
+        } else {
+            user_borrow.principal = checked_sub(user_borrow.principal, repay_amount);
+            repay_amount
+        };
+
+        state.total_borrow = checked_sub(state.total_borrow, principal_payment);
+
+        write_user_borrow(&env, &borrower, &user_borrow);
+        write_pool_state(&env, &state);
+        emit_liquidation(
+            &env,
+            &borrower,
+            &liquidator,
+            &config.asset,
+            &config.asset,
+            repay_amount,
+            0,
+        );
 
         Ok(repay_amount)
     }
@@ -346,6 +427,7 @@ impl LendingPool {
 mod tests {
     use super::*;
     use soroban_sdk::testutils::{Address as _, Ledger, LedgerInfo};
+    use soroban_sdk::Symbol;
 
     fn create_test_env() -> (Env, Address, Address, Address) {
         let env = Env::default();
@@ -611,5 +693,90 @@ mod tests {
 
         // Withdraw should call burn
         assert!(invoke_withdraw(&env, &contract_id, &user, &asset, amount).is_ok());
+    }
+
+    #[contract]
+    pub struct MockCollateralManager;
+    #[contractimpl]
+    impl MockCollateralManager {
+        pub fn get_price(env: Env, asset: Address) -> i128 {
+            env.storage()
+                .instance()
+                .get(&(Symbol::new(&env, "price"), asset))
+                .unwrap_or(100 * fixed_point_one())
+        }
+        pub fn get_health_factor(env: Env, _user: Address, _total_borrow_usd: i128) -> i128 {
+            env.storage()
+                .instance()
+                .get(&Symbol::new(&env, "health"))
+                .unwrap_or(0)
+        }
+    }
+
+    #[test]
+    fn test_withdraw_rejects_undercollateralized() {
+        let (env, admin, asset, contract_id) = create_test_env();
+        let config = create_pool_config(&asset);
+        assert!(invoke_initialize(&env, &contract_id, &admin, config).is_ok());
+
+        let mock_cm_id = env.register_contract(None, MockCollateralManager);
+        env.as_contract(&contract_id, || {
+            LendingPool::set_collateral_manager(env.clone(), admin.clone(), mock_cm_id.clone()).unwrap();
+        });
+
+        let user = Address::generate(&env);
+        let supply_amount = 1_000_000_000i128;
+        let borrow_amount = 500_000_000i128;
+
+        assert!(invoke_supply(&env, &contract_id, &user, &asset, supply_amount).is_ok());
+        assert!(invoke_borrow(&env, &contract_id, &user, &asset, borrow_amount).is_ok());
+
+        // Mock returns health=0 (unhealthy), so withdraw should fail
+        let result = invoke_withdraw(&env, &contract_id, &user, &asset, supply_amount);
+        assert_eq!(result, Err(ContractError::InsufficientCollateral));
+    }
+
+    #[test]
+    fn test_withdraw_allows_healthy_with_collateral() {
+        let (env, admin, asset, contract_id) = create_test_env();
+        let config = create_pool_config(&asset);
+        assert!(invoke_initialize(&env, &contract_id, &admin, config).is_ok());
+
+        let mock_cm_id = env.register_contract(None, MockCollateralManager);
+        env.as_contract(&contract_id, || {
+            LendingPool::set_collateral_manager(env.clone(), admin.clone(), mock_cm_id.clone()).unwrap();
+        });
+
+        // Set mock to return healthy: health_factor = 1.5 * ONE (> ONE)
+        env.as_contract(&mock_cm_id, || {
+            env.storage().instance().set(&Symbol::new(&env, "health"), &(150 * fixed_point_one() / 100));
+        });
+
+        let user = Address::generate(&env);
+        let supply_amount = 1_000_000_000i128;
+        let borrow_amount = 500_000_000i128;
+
+        assert!(invoke_supply(&env, &contract_id, &user, &asset, supply_amount - borrow_amount).is_ok());
+        assert!(invoke_borrow(&env, &contract_id, &user, &asset, borrow_amount).is_ok());
+
+        // Withdraw remaining supply after borrow should succeed when healthy
+        let supply_remaining = supply_amount - borrow_amount;
+        let result = invoke_withdraw(&env, &contract_id, &user, &asset, supply_remaining);
+        assert!(result.is_ok());
+    }
+
+    #[test]
+    fn test_withdraw_works_without_collateral_manager() {
+        // No collateral manager set = no health check, withdraw should work as before
+        let (env, admin, asset, contract_id) = create_test_env();
+        let config = create_pool_config(&asset);
+        assert!(invoke_initialize(&env, &contract_id, &admin, config).is_ok());
+
+        let user = Address::generate(&env);
+        let amount = 1_000_000_000i128;
+
+        assert!(invoke_supply(&env, &contract_id, &user, &asset, amount).is_ok());
+        let result = invoke_withdraw(&env, &contract_id, &user, &asset, amount);
+        assert!(result.is_ok());
     }
 }

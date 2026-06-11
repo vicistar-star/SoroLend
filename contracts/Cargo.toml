@@ -3,6 +3,9 @@ members = [
     "lending-pool",
     "collateral-manager",
     "stoken",
+    "price-oracle",
+    "flash-loan",
+    "liquidation",
 ]
 resolver = "2"
 
