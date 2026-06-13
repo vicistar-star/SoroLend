@@ -4,6 +4,7 @@ import { Test, TestingModule } from '@nestjs/testing';
 import Redis from 'ioredis';
 
 import { REDIS_CLIENT } from '../cache/cache.module';
+
 import { AuthService } from './auth.service';
 
 describe('AuthService', () => {

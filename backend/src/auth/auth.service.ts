@@ -1,9 +1,10 @@
+import { randomBytes } from 'crypto';
+
 import { Injectable, Logger, UnauthorizedException } from '@nestjs/common';
+import { Inject } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
 import { JwtService } from '@nestjs/jwt';
-import { Inject } from '@nestjs/common';
 import Redis from 'ioredis';
-import { randomBytes } from 'crypto';
 
 import { REDIS_CLIENT } from '../cache/cache.module';
 
