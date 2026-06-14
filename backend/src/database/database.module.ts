@@ -8,8 +8,10 @@ import { CollateralPosition } from './entities/collateral-position.entity';
 import { LiquidationEvent } from './entities/liquidation-event.entity';
 import { MarketSnapshot } from './entities/market-snapshot.entity';
 import { PriceFeed } from './entities/price-feed.entity';
+import { Proposal } from './entities/proposal.entity';
 import { SupplyPosition } from './entities/supply-position.entity';
 import { User } from './entities/user.entity';
+import { Vote } from './entities/vote.entity';
 
 const entities = [
   User,
@@ -20,6 +22,8 @@ const entities = [
   MarketSnapshot,
   LiquidationEvent,
   PriceFeed,
+  Proposal,
+  Vote,
 ];
 
 @Module({

@@ -12,6 +12,7 @@ import { BorrowPosition } from './borrow-position.entity';
 import { CollateralPosition } from './collateral-position.entity';
 import { LiquidationEvent } from './liquidation-event.entity';
 import { SupplyPosition } from './supply-position.entity';
+import { Vote } from './vote.entity';
 
 @Entity('users')
 export class User {
@@ -51,4 +52,7 @@ export class User {
 
   @OneToMany(() => LiquidationEvent, (evt) => evt.borrower)
   liquidationsReceived: LiquidationEvent[];
+
+  @OneToMany(() => Vote, (v) => v.voter)
+  votes: Vote[];
 }
