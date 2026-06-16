@@ -1,0 +1,13 @@
+@mixin panel {
+  background: $color-surface;
+  border: 1px solid $color-border;
+  border-radius: 8px;
+  box-shadow: $shadow-soft;
+}
+
+@mixin field {
+  border: 1px solid $color-border;
+  border-radius: 6px;
+  min-height: 40px;
+  padding: 0 12px;
+}
