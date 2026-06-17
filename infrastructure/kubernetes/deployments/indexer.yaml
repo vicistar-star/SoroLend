@@ -1,0 +1,32 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: sorolend-indexer
+  namespace: sorolend
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: sorolend-indexer
+  template:
+    metadata:
+      labels:
+        app: sorolend-indexer
+    spec:
+      containers:
+      - name: indexer
+        image: ghcr.io/sorolend/backend:latest
+        command: ["node", "dist/main.js"]
+        args: ["--indexer-only"]
+        resources:
+          requests:
+            memory: "256Mi"
+            cpu: "100m"
+          limits:
+            memory: "512Mi"
+            cpu: "500m"
+        envFrom:
+        - secretRef:
+            name: sorolend-backend-secrets
+        - configMapRef:
+            name: sorolend-backend-config

@@ -1,0 +1,10 @@
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: sorolend-backend-config
+  namespace: sorolend
+data:
+  NODE_ENV: "production"
+  DATABASE_URL: "postgresql://sorolend:${DB_PASSWORD}@postgres:5432/sorolend"
+  REDIS_URL: "redis://:${REDIS_PASSWORD}@redis:6379"
+  RABBITMQ_URL: "amqp://sorolend:${RABBITMQ_PASSWORD}@rabbitmq:5672"
