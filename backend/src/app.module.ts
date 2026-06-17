@@ -14,6 +14,7 @@ import { IndexerModule } from './modules/indexer/indexer.module';
 import { GovernanceModule } from './modules/governance/governance.module';
 import { NotificationsModule } from './modules/notifications/notifications.module';
 import { AnalyticsModule } from './modules/analytics/analytics.module';
+import { HealthController } from './health.controller';
 
 @Module({
   imports: [
@@ -32,5 +33,6 @@ import { AnalyticsModule } from './modules/analytics/analytics.module';
     NotificationsModule,
     AnalyticsModule,
   ],
+  controllers: [HealthController],
 })
 export class AppModule {}
