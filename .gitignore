@@ -1,12 +1,40 @@
-# Rust
+# ─── Rust / Contracts ────────────────────────────────
 **/target/
 **/*.rs.bk
+Cargo.lock
 
-# Node
+# ─── Node / TypeScript ───────────────────────────────
 node_modules/
 dist/
-.env
+build/
+.next/
+coverage/
+*.tsbuildinfo
 
-# OS
+# ─── Environment & Secrets ───────────────────────────
+.env
+.env.local
+.env.*.local
+!.env.example
+
+# ─── Angular ─────────────────────────────────────────
+.angular/cache/
+
+# ─── Logs ────────────────────────────────────────────
+*.log
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+
+# ─── OS ──────────────────────────────────────────────
 .DS_Store
 Thumbs.db
+
+# ─── Editors ─────────────────────────────────────────
+.vscode/
+.idea/
+*.swp
+*.swo
+
+# ─── Docker ──────────────────────────────────────────
+docker-compose.override.yml

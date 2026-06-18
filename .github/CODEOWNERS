@@ -1,0 +1,15 @@
+# Global owners — review all PRs by default
+* @sorolend/core-maintainers
+
+# Smart contracts — require contract team sign-off
+contracts/ @sorolend/contract-reviewers
+
+# Backend
+backend/ @sorolend/backend-reviewers
+
+# Frontend
+frontend/ @sorolend/frontend-reviewers
+
+# Infrastructure & CI
+infrastructure/ @sorolend/devops
+.github/ @sorolend/devops
