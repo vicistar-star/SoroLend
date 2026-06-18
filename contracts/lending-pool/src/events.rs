@@ -1,3 +1,4 @@
+#![allow(deprecated)]
 use soroban_sdk::{Address, Env, Symbol};
 
 pub fn emit_supply(env: &Env, caller: &Address, asset: &Address, amount: i128, shares: i128) {

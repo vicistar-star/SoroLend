@@ -1,3 +1,4 @@
+#![allow(dead_code)]
 const ONE: i128 = 1_000_000_000_000_000_000;
 
 pub fn fixed_point_one() -> i128 {

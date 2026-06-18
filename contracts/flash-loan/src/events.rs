@@ -1,3 +1,4 @@
+#![allow(deprecated)]
 use soroban_sdk::{Address, Env, Symbol};
 
 pub fn emit_flash_loan(

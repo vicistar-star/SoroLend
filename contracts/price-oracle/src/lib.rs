@@ -5,9 +5,12 @@ mod math;
 mod storage;
 
 use events::*;
-use math::{checked_mul, fixed_point_one, mul_div, percent_of, abs_diff, checked_add, checked_sub};
+use math::{checked_mul, percent_of, abs_diff, checked_add};
 use soroban_sdk::{contract, contractimpl, Address, Env};
 use storage::*;
+
+#[cfg(test)]
+use math::fixed_point_one;
 
 #[contract]
 pub struct PriceOracle;

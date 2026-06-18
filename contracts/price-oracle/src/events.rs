@@ -1,3 +1,4 @@
+#![allow(deprecated)]
 use soroban_sdk::{Address, Env, Symbol};
 
 pub fn emit_price_update(env: &Env, keeper: &Address, asset: &Address, old_price: i128, new_price: i128) {

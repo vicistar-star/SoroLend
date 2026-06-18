@@ -6,8 +6,24 @@ mod storage;
 
 use events::*;
 use math::*;
-use soroban_sdk::{contract, contractimpl, contractclient, Address, Env};
+use soroban_sdk::{contract, contractimpl, contractclient, contracttype, Address, Env};
 use storage::*;
+
+#[contracttype]
+pub struct LiquidateParams {
+    pub liquidator: Address,
+    pub borrower: Address,
+    pub debt_asset: Address,
+    pub debt_amount: i128,
+    pub debt_price: i128,
+    pub collateral_asset: Address,
+    pub collateral_price: i128,
+    pub collateral_value_usd: i128,
+    pub collateral_threshold: i128,
+    pub liquidation_penalty: i128,
+    pub pool_address: Address,
+    pub coll_manager_address: Address,
+}
 
 #[contractclient(name = "LendingPoolClient")]
 pub trait LendingPoolTrait {
@@ -34,34 +50,19 @@ impl Liquidation {
 
     pub fn liquidate(
         env: Env,
-        liquidator: Address,
-        borrower: Address,
-        debt_asset: Address,
-        debt_amount: i128,
-        debt_price: i128,
-        collateral_asset: Address,
-        collateral_price: i128,
-        collateral_value_usd: i128,
-        collateral_threshold: i128,
-        liquidation_penalty: i128,
-        pool_address: Address,
-        coll_manager_address: Address,
+        params: LiquidateParams,
     ) -> i128 {
-        liquidator.require_auth();
-        if debt_amount <= 0 {
+        params.liquidator.require_auth();
+        if params.debt_amount <= 0 {
             panic!("invalid debt amount");
         }
-        if debt_price <= 0 || collateral_price <= 0 {
+        if params.debt_price <= 0 || params.collateral_price <= 0 {
             panic!("invalid price");
         }
 
-        // Calculate debt value in USD
-        let debt_value_usd = mul_div(debt_amount, debt_price, fixed_point_one());
+        let debt_value_usd = mul_div(params.debt_amount, params.debt_price, fixed_point_one());
+        let weighted_collateral = percent_of(params.collateral_value_usd, params.collateral_threshold);
 
-        // Calculate weighted collateral value
-        let weighted_collateral = percent_of(collateral_value_usd, collateral_threshold);
-
-        // Check health factor: must be < 1.0 (under-collateralized)
         let health_factor = if debt_value_usd == 0 {
             fixed_point_one() * 100
         } else {
@@ -72,33 +73,27 @@ impl Liquidation {
             panic!("borrower is not under-collateralized");
         }
 
-        // Calculate debt value in collateral terms
-        let debt_in_collateral = mul_div(debt_amount, debt_price, collateral_price);
-
-        // Apply liquidation bonus for the liquidator
+        let debt_in_collateral = mul_div(params.debt_amount, params.debt_price, params.collateral_price);
         let collateral_to_seize = checked_add(
             debt_in_collateral,
-            percent_of(debt_in_collateral, liquidation_penalty),
+            percent_of(debt_in_collateral, params.liquidation_penalty),
         );
 
-        // Repay debt via lending pool
-        let pool_client = LendingPoolClient::new(&env, &pool_address);
-        let actual_covered = pool_client.liquidate_repay(&liquidator, &borrower, &debt_asset, &debt_amount);
+        let pool_client = LendingPoolClient::new(&env, &params.pool_address);
+        let actual_covered = pool_client.liquidate_repay(&params.liquidator, &params.borrower, &params.debt_asset, &params.debt_amount);
 
-        // Seize collateral from borrower
-        let coll_client = CollateralManagerClient::new(&env, &coll_manager_address);
-        coll_client.seize_collateral(&liquidator, &borrower, &collateral_asset, &collateral_to_seize);
+        let coll_client = CollateralManagerClient::new(&env, &params.coll_manager_address);
+        coll_client.seize_collateral(&params.liquidator, &params.borrower, &params.collateral_asset, &collateral_to_seize);
 
-        emit_liquidation(
-            &env,
-            &liquidator,
-            &borrower,
-            &debt_asset,
-            &collateral_asset,
-            actual_covered,
-            collateral_to_seize,
-            liquidation_penalty,
-        );
+        emit_liquidation(&env, &LiquidationParams {
+            liquidator: &params.liquidator,
+            borrower: &params.borrower,
+            debt_asset: &params.debt_asset,
+            collateral_asset: &params.collateral_asset,
+            debt_covered: actual_covered,
+            collateral_seized: collateral_to_seize,
+            liquidation_bonus: params.liquidation_penalty,
+        });
 
         actual_covered
     }
@@ -186,18 +181,20 @@ mod tests {
         env.as_contract(&contract_id, || {
             Liquidation::liquidate(
                 env.clone(),
-                liquidator.clone(),
-                borrower.clone(),
-                Address::generate(&env),
-                5 * fixed_point_one(),
-                fixed_point_one(),
-                Address::generate(&env),
-                fixed_point_one(),
-                10 * fixed_point_one(),
-                80 * fixed_point_one() / 100,
-                5 * fixed_point_one() / 100,
-                pool_id.clone(),
-                cm_id.clone(),
+                LiquidateParams {
+                    liquidator: liquidator.clone(),
+                    borrower: borrower.clone(),
+                    debt_asset: Address::generate(&env),
+                    debt_amount: 5 * fixed_point_one(),
+                    debt_price: fixed_point_one(),
+                    collateral_asset: Address::generate(&env),
+                    collateral_price: fixed_point_one(),
+                    collateral_value_usd: 10 * fixed_point_one(),
+                    collateral_threshold: 80 * fixed_point_one() / 100,
+                    liquidation_penalty: 5 * fixed_point_one() / 100,
+                    pool_address: pool_id.clone(),
+                    coll_manager_address: cm_id.clone(),
+                },
             )
         });
     }
@@ -217,18 +214,20 @@ mod tests {
         let result = env.as_contract(&contract_id, || {
             Liquidation::liquidate(
                 env.clone(),
-                liquidator.clone(),
-                borrower.clone(),
-                Address::generate(&env),
-                5 * fixed_point_one(),
-                fixed_point_one(),
-                Address::generate(&env),
-                fixed_point_one(),
-                fixed_point_one(),
-                80 * fixed_point_one() / 100,
-                5 * fixed_point_one() / 100,
-                pool_id.clone(),
-                cm_id.clone(),
+                LiquidateParams {
+                    liquidator: liquidator.clone(),
+                    borrower: borrower.clone(),
+                    debt_asset: Address::generate(&env),
+                    debt_amount: 5 * fixed_point_one(),
+                    debt_price: fixed_point_one(),
+                    collateral_asset: Address::generate(&env),
+                    collateral_price: fixed_point_one(),
+                    collateral_value_usd: fixed_point_one(),
+                    collateral_threshold: 80 * fixed_point_one() / 100,
+                    liquidation_penalty: 5 * fixed_point_one() / 100,
+                    pool_address: pool_id.clone(),
+                    coll_manager_address: cm_id.clone(),
+                },
             )
         });
         assert_eq!(result, 5 * fixed_point_one());
@@ -244,18 +243,20 @@ mod tests {
         env.as_contract(&contract_id, || {
             Liquidation::liquidate(
                 env.clone(),
-                Address::generate(&env),
-                Address::generate(&env),
-                Address::generate(&env),
-                0,
-                fixed_point_one(),
-                Address::generate(&env),
-                fixed_point_one(),
-                10 * fixed_point_one(),
-                80 * fixed_point_one() / 100,
-                5 * fixed_point_one() / 100,
-                Address::generate(&env),
-                Address::generate(&env),
+                LiquidateParams {
+                    liquidator: Address::generate(&env),
+                    borrower: Address::generate(&env),
+                    debt_asset: Address::generate(&env),
+                    debt_amount: 0,
+                    debt_price: fixed_point_one(),
+                    collateral_asset: Address::generate(&env),
+                    collateral_price: fixed_point_one(),
+                    collateral_value_usd: 10 * fixed_point_one(),
+                    collateral_threshold: 80 * fixed_point_one() / 100,
+                    liquidation_penalty: 5 * fixed_point_one() / 100,
+                    pool_address: Address::generate(&env),
+                    coll_manager_address: Address::generate(&env),
+                },
             )
         });
     }
@@ -270,18 +271,20 @@ mod tests {
         env.as_contract(&contract_id, || {
             Liquidation::liquidate(
                 env.clone(),
-                Address::generate(&env),
-                Address::generate(&env),
-                Address::generate(&env),
-                5 * fixed_point_one(),
-                0,
-                Address::generate(&env),
-                fixed_point_one(),
-                10 * fixed_point_one(),
-                80 * fixed_point_one() / 100,
-                5 * fixed_point_one() / 100,
-                Address::generate(&env),
-                Address::generate(&env),
+                LiquidateParams {
+                    liquidator: Address::generate(&env),
+                    borrower: Address::generate(&env),
+                    debt_asset: Address::generate(&env),
+                    debt_amount: 5 * fixed_point_one(),
+                    debt_price: 0,
+                    collateral_asset: Address::generate(&env),
+                    collateral_price: fixed_point_one(),
+                    collateral_value_usd: 10 * fixed_point_one(),
+                    collateral_threshold: 80 * fixed_point_one() / 100,
+                    liquidation_penalty: 5 * fixed_point_one() / 100,
+                    pool_address: Address::generate(&env),
+                    coll_manager_address: Address::generate(&env),
+                },
             )
         });
     }
@@ -301,18 +304,20 @@ mod tests {
         let result = env.as_contract(&contract_id, || {
             Liquidation::liquidate(
                 env.clone(),
-                liquidator.clone(),
-                borrower.clone(),
-                Address::generate(&env),
-                100 * fixed_point_one(),
-                fixed_point_one(),
-                Address::generate(&env),
-                fixed_point_one(),
-                100 * fixed_point_one(),
-                80 * fixed_point_one() / 100,
-                5 * fixed_point_one() / 100,
-                pool_id.clone(),
-                cm_id.clone(),
+                LiquidateParams {
+                    liquidator: liquidator.clone(),
+                    borrower: borrower.clone(),
+                    debt_asset: Address::generate(&env),
+                    debt_amount: 100 * fixed_point_one(),
+                    debt_price: fixed_point_one(),
+                    collateral_asset: Address::generate(&env),
+                    collateral_price: fixed_point_one(),
+                    collateral_value_usd: 100 * fixed_point_one(),
+                    collateral_threshold: 80 * fixed_point_one() / 100,
+                    liquidation_penalty: 5 * fixed_point_one() / 100,
+                    pool_address: pool_id.clone(),
+                    coll_manager_address: cm_id.clone(),
+                },
             )
         });
         assert_eq!(result, 100 * fixed_point_one());

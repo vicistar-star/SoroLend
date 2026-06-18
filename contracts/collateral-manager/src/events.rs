@@ -1,3 +1,4 @@
+#![allow(deprecated)]
 use soroban_sdk::{Address, Env, Symbol};
 
 pub fn emit_collateral_deposit(env: &Env, user: &Address, asset: &Address, amount: i128) {

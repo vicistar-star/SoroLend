@@ -1,3 +1,4 @@
+#![allow(dead_code)]
 const ONE: i128 = 1_000_000_000_000_000_000;
 const DECIMALS: u32 = 18;
 

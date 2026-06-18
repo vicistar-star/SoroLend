@@ -63,14 +63,14 @@ impl LendingPool {
         Ok(())
     }
 
-    pub fn set_stoken(env: Env, admin: Address, stoken: Address) -> Result<(), ContractError> {
+    pub fn set_stoken(env: Env, _admin: Address, stoken: Address) -> Result<(), ContractError> {
         let config = read_pool_config(&env);
         config.admin.require_auth();
         write_stoken_contract(&env, &stoken);
         Ok(())
     }
 
-    pub fn set_collateral_manager(env: Env, admin: Address, manager: Address) -> Result<(), ContractError> {
+    pub fn set_collateral_manager(env: Env, _admin: Address, manager: Address) -> Result<(), ContractError> {
         let config = read_pool_config(&env);
         config.admin.require_auth();
         write_collateral_manager(&env, &manager);
@@ -88,7 +88,7 @@ impl LendingPool {
         Self::validate_pool_active(&config)?;
         Self::validate_asset(&config, &asset)?;
 
-        Self::accrue_interest(&env);
+                let _ = Self::accrue_interest(&env);
 
         let mut state = read_pool_state(&env);
 
@@ -134,7 +134,7 @@ impl LendingPool {
         Self::validate_pool_active(&config)?;
         Self::validate_asset(&config, &asset)?;
 
-        Self::accrue_interest(&env);
+                let _ = Self::accrue_interest(&env);
 
         let mut state = read_pool_state(&env);
         let mut user_supply = read_user_supply(&env, &caller).ok_or(ContractError::UserSupplyNotFound)?;
@@ -198,7 +198,7 @@ impl LendingPool {
         Self::validate_pool_active(&config)?;
         Self::validate_asset(&config, &asset)?;
 
-        Self::accrue_interest(&env);
+                let _ = Self::accrue_interest(&env);
 
         let mut state = read_pool_state(&env);
 
@@ -234,7 +234,7 @@ impl LendingPool {
         Self::validate_pool_active(&config)?;
         Self::validate_asset(&config, &asset)?;
 
-        Self::accrue_interest(&env);
+                let _ = Self::accrue_interest(&env);
 
         let mut state = read_pool_state(&env);
         let mut user_borrow = read_user_borrow(&env, &caller).ok_or(ContractError::UserBorrowNotFound)?;
@@ -274,7 +274,7 @@ impl LendingPool {
         Self::validate_pool_active(&config)?;
         Self::validate_asset(&config, &asset)?;
 
-        Self::accrue_interest(&env);
+                let _ = Self::accrue_interest(&env);
 
         let mut state = read_pool_state(&env);
         let mut user_borrow = read_user_borrow(&env, &borrower).ok_or(ContractError::UserBorrowNotFound)?;
